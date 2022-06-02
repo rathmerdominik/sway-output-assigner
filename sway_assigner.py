@@ -54,11 +54,13 @@ if __name__ == "__main__":
         #TODO Cleanup Formatting
         #TODO better monitor handling when adding more than two
         #TODO add doc-opt to generate specific segments (move, select, bind)
+        final_output.append(WORKSPACE_BIND)
         final_output.append("\n".join(generate_workspace_bind(output, pos)))
+        final_output.append(WORKSPACE_SELECT)
         final_output.append("\n".join(generate_workspace_select(output, pos)))
+        final_output.append(WORKSPACE_MOVE)
         final_output.append("\n".join(generate_workspace_move(output, pos)))
     
-    print(final_output)
     print("\n".join(final_output))   
          
     
