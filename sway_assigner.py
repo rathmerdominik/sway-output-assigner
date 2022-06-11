@@ -62,7 +62,6 @@ if __name__ == "__main__":
     final_output: list[str] = []
     monitor_pos: dict[int, str] = {}
 
-    # TODO Cleanup Formatting
     # TODO better monitor handling when adding more than two
     # TODO add doc-opt to generate specific segments (move, select, bind)
     for output in outputs:
