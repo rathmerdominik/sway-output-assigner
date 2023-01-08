@@ -1,14 +1,40 @@
-from subprocess import Popen, PIPE
-from json import load
+import argparse
 
-WORKSPACE_SELECT: str = "# Workspace Select"
-WORKSPACE_MOVE: str = "# Workspace move"
-WORKSPACE_BIND: str = "# Workspace bind"
-FORMATTED_OUTPUT = True
+from json import load
+from subprocess import Popen, PIPE
+
+from models.args import Args
+
+parser = argparse.ArgumentParser(
+    description="Output binding generator for SwayWM. Works for up to 2 monitor."
+)
+parser.add_argument(
+    "-M",
+    "--monitor",
+    type=str,
+    help="Set a monitor or multiple to work with. If not defined it will be interactive. The order you specify the monitors will be the order in the monitor array",
+    action="extend",
+    nargs="+",
+)
+parser.add_argument(
+    "-o",
+    "--get_outputs",
+    action="store_true",
+    help="Will print all available monitor names",
+)
+parser.add_argument(
+    "-b", "--bind", action="store_true", help="Only prints monitor workspace bindings"
+)
+parser.add_argument(
+    "-m", "--move", action="store_true", help="Only prints move bindings"
+)
+parser.add_argument(
+    "-s", "--select", action="store_true", help="Prints only select binding"
+)
 
 
 def get_outputs() -> list[str]:
-    cmd: object = Popen(("swaymsg", "--raw", "--type", "get_outputs"), stdout=PIPE)
+    cmd = Popen(("swaymsg", "--raw", "--type", "get_outputs"), stdout=PIPE)
     cmd.wait()
     raw_data: str = load(cmd.stdout)
     outputs: list[str] = []
@@ -22,72 +48,96 @@ def get_outputs() -> list[str]:
     return outputs
 
 
-def generate_workspace_select(output: list[str], pos: int) -> list[str]:
-    workspace_select_output: list[str] = []
+def generate_workspace_select(outputs: list[str]) -> list[str]:
+    selects = []
     for i in range(1, 11):
-        if pos == 2:
-            workspace_select_output.append(
-                f"bindsym $mod+shift+F{i} workspace '{output}'"
-            )
-            continue
-        workspace_select_output.append(
-            f"bindsym $mod+shift+{pos * 10 + i - 10} workspace '{output}'"
-        )
-    return workspace_select_output
+        if i < 10:
+            selects.append(f"bindsym $mod+{i} workspace {i}")
+        if i == 10:
+            selects.append(f"bindsym $mod+0 workspace {i}")
+
+    if len(outputs) > 1:
+        for i in range(1, 11):
+            selects.append(f"bindsym $mod+F{i} workspace {i + 10}")
+
+    return selects
 
 
-def generate_workspace_move(output: list[str], pos: int) -> list[str]:
-    workspace_move_output: list[str] = []
+def generate_workspace_move(outputs: list[str]) -> list[str]:
+    moves = []
     for i in range(1, 11):
-        if pos == 2:
-            workspace_move_output.append(
-                f"bindsym $mod+shift+F{i} move container to workspace '{output}'"
-            )
-            continue
-        workspace_move_output.append(
-            f"bindsym $mod+shift+{pos * 10 + i - 10} move container to workspace '{output}'"
-        )
-    return workspace_move_output
+        if i < 10:
+            moves.append(f"bindsym $mod+Shift+{i} workspace {i}")
+        if i == 10:
+            moves.append(f"bindsym $mod+Shift+0 workspace {i}")
+
+    if len(outputs) > 1:
+        for i in range(1, 11):
+            moves.append(f"bindsym $mod+Shift+F{i} workspace {i + 10}")
+
+    return moves
 
 
-def generate_workspace_bind(output: list[str], pos: int) -> list[str]:
-    workspace_bind_output: list[str] = []
-    for i in range(1, 11):
-        workspace_bind_output.append(f"workspace {pos * 10 + i - 10} output '{output}'")
-    return workspace_bind_output
+def generate_workspace_bind(outputs: list[str]) -> list[str]:
+    bindings = []
+    for i in range(1, 21):
+        if i < 11:
+            bindings.append(f"workspace '{i}' output '{outputs[0]}'")
+        else:
+            bindings.append(f"workspace '{i}' output '{outputs[1]}'")
+    return bindings
 
 
 if __name__ == "__main__":
+    args = Args(**vars(parser.parse_args()))
     outputs = get_outputs()
-    final_output: list[str] = []
-    monitor_pos: dict[int, str] = {}
 
-    # TODO better monitor handling when adding more than two
-    # TODO add doc-opt to generate specific segments (move, select, bind)
-    for output in outputs:
-        print(output)
-        monitor_pos[int(input("Position in Monitor array > "))] = output
+    if args.get_outputs:
+        for output in outputs:
+            print(output)
+        exit(0)
 
-    if FORMATTED_OUTPUT:
-        final_output.append("\n" + WORKSPACE_BIND + "\n")
-    for pos in monitor_pos:
-        final_output.append(
-            "\n".join(generate_workspace_bind(monitor_pos.get(pos), pos))
-        )
+    if not args.monitor:
+        try:
+            monitors = []
+            print("+--+ Entering interactive mode +--+\n")
+            for monitor in outputs:
+                try:
+                    pos = int(
+                        input(
+                            f"{monitor}\nWhich position does this monitor have? [int] > "
+                        )
+                    )
+                except ValueError:
+                    print(
+                        "You did not insert a valid integer! Only integers can be used as monitor position"
+                    )
+                    exit(1)
 
-    if FORMATTED_OUTPUT:
-        final_output.append("\n" + WORKSPACE_SELECT + "\n")
-    for pos in monitor_pos:
-        final_output.append(
-            "\n".join(generate_workspace_select(monitor_pos.get(pos), pos))
-        )
+                monitors.insert(pos + -1, monitor)
 
-    if FORMATTED_OUTPUT:
-        final_output.append("\n" + WORKSPACE_MOVE + "\n")
+            args.monitor = monitors
+        except KeyboardInterrupt:
+            print("\nClosed on user request. Goodbye")
+            exit(0)
 
-    for pos in monitor_pos:
-        final_output.append(
-            "\n".join(generate_workspace_move(monitor_pos.get(pos), pos))
-        )
+    bindings = []
+    if args.bind:
+        bindings = generate_workspace_bind(args.monitor)
 
-    print("\n".join(final_output))
+    selects = []
+    if args.select:
+        selects = generate_workspace_select(args.monitor)
+
+    moves = []
+    if args.move:
+        moves = generate_workspace_move(args.monitor)
+
+    for binding in bindings:
+        print(binding)
+
+    for select in selects:
+        print(select)
+
+    for moves in moves:
+        print(moves)
